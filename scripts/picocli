@@ -37,10 +37,20 @@ def parse_cmdline():
                          help='Set channel coupling',
     )
 
+    acq_opts = parser.add_argument_group('acquisition options')
+    acq_opts.add_argument('--sampling-interval', type=int, default=250,
+                          help='requested time interval between samples, in units of --time-unit',
+    )
+    acq_opts.add_argument('--time-unit', default='us',
+                         choices=['fs', 'ps', 'ns', 'us', 'ms', 's'],
+                         help='time unit used for sampling intervall',
+    )
+
     options = parser.parse_args()
     options.channel = ps.PS3000A_CHANNEL[f'PS3000A_CHANNEL_{options.channel}']
     options.range = ps.PS3000A_RANGE[f'PS3000A_{options.range}']
     options.coupling = ps.PS3000A_COUPLING[f'PS3000A_{options.coupling}']
+    options.sampling_interval = ctypes.c_int32(options.sampling_interval)
 
     return options
 
@@ -113,27 +123,23 @@ if __name__ == '__main__':
             'Failed to set data buffers for channel A'
 
     # Begin streaming mode:
-    sampleInterval = ctypes.c_int32(250)
-    sampleUnits = ps.PS3000A_TIME_UNITS['PS3000A_US']
     # We are not triggering:
     maxPreTriggerSamples = 0
     autoStopOn = 1
     # No downsampling:
     downsampleRatio = 1
     assert ps.ps3000aRunStreaming(chandle,
-                                  ctypes.byref(sampleInterval),
-                                  sampleUnits,
+                                  ctypes.byref(options.sampling_interval),
+                                  ps.PS3000A_TIME_UNITS[f'PS3000A_{options.time_unit.upper()}'],
                                   maxPreTriggerSamples,
                                   totalSamples,
                                   autoStopOn,
-                                  downsampleRatio,
+                                  1,
                                   ps.PS3000A_RATIO_MODE['PS3000A_RATIO_MODE_NONE'],
                                   sizeOfOneBuffer) == 0, 'Failed to start streaming'
 
-    actualSampleInterval = sampleInterval.value
-    actualSampleIntervalNs = actualSampleInterval * 1000
-
-    print("Capturing at sample interval %s ns" % actualSampleIntervalNs)
+    # on return, RunStreaming updates sampling_interval to the actual rate
+    print(f'Actual sampling interval: {options.sampling_interval.value} {options.time_unit}')
 
     # We need a big buffer, not registered with the driver, to keep our complete capture in.
     bufferCompleteA = np.zeros(shape=totalSamples, dtype=np.int16)
@@ -166,11 +172,11 @@ if __name__ == '__main__':
     adc2mVChAMax = adc2mV(bufferCompleteA, options.range, maxADC)
 
     # Create time data
-    time = np.linspace(0, (totalSamples) * actualSampleIntervalNs, totalSamples)
+    time = np.linspace(0, (totalSamples) * options.sampling_interval.value, totalSamples)
 
     # Plot data from channel A
     plt.plot(time, adc2mVChAMax[:])
-    plt.xlabel('Time (ns)')
+    plt.xlabel(f'Time ({options.time_unit})')
     plt.ylabel('Voltage (mV)')
     plt.show()
 
