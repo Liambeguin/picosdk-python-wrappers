@@ -25,8 +25,22 @@ def parse_cmdline():
                         help='Set channel to sample',
     )
 
+    ch_opts = parser.add_argument_group('channel options')
+    ch_opts.add_argument('--range', default='2V',
+                         choices=['10MV', '20MV', '50MV', '100MV', '200MV',
+                                  '500MV', '1V', '2V', '5V', '10V', '20V',
+                                  '50V'],
+                         help='Set channel range',
+    )
+    ch_opts.add_argument('--coupling', default='DC',
+                         choices=['AC', 'DC'],
+                         help='Set channel coupling',
+    )
+
     options = parser.parse_args()
     options.channel = ps.PS3000A_CHANNEL[f'PS3000A_CHANNEL_{options.channel}']
+    options.range = ps.PS3000A_RANGE[f'PS3000A_{options.range}']
+    options.coupling = ps.PS3000A_COUPLING[f'PS3000A_{options.coupling}']
 
     return options
 
@@ -67,10 +81,6 @@ if __name__ == '__main__':
         assert_pico_ok(status["changePowerSource"])
 
 
-    enabled = 1
-    disabled = 0
-    analogue_offset = 0.0
-
     # Set up channel A
     # handle = chandle
     # channel = PS3000A_CHANNEL_A = 0
@@ -78,13 +88,12 @@ if __name__ == '__main__':
     # coupling type = PS3000A_DC = 1
     # range = PS3000A_2V = 7
     # analogue offset = 0 V
-    channel_range = ps.PS3000A_RANGE['PS3000A_2V']
     assert ps.ps3000aSetChannel(chandle,
                                 options.channel,
-                                enabled,
-                                ps.PS3000A_COUPLING['PS3000A_DC'],
-                                channel_range,
-                                analogue_offset) == 0, 'Failed to setup Channel'
+                                1,
+                                options.coupling,
+                                options.range,
+                                0.0) == 0, 'Failed to setup Channel'
 
     # Size of capture
     sizeOfOneBuffer = 500
@@ -165,7 +174,7 @@ if __name__ == '__main__':
     assert ps.ps3000aMaximumValue(chandle, ctypes.byref(maxADC)) == 0, 'Failed to find max'
 
     # Convert ADC counts data to mV
-    adc2mVChAMax = adc2mV(bufferCompleteA, channel_range, maxADC)
+    adc2mVChAMax = adc2mV(bufferCompleteA, options.range, maxADC)
 
     # Create time data
     time = np.linspace(0, (totalSamples) * actualSampleIntervalNs, totalSamples)
