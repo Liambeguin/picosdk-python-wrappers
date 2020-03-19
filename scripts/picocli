@@ -50,7 +50,7 @@ def streaming_callback(handle, noOfSamples, startIndex, overflow, triggerAt, tri
     wasCalledBack = True
     destEnd = nextSample + noOfSamples
     sourceEnd = startIndex + noOfSamples
-    bufferCompleteA[nextSample:destEnd] = bufferAMax[startIndex:sourceEnd]
+    bufferCompleteA[nextSample:destEnd] = data_buffer[startIndex:sourceEnd]
     nextSample += noOfSamples
     if autoStop:
         autoStopOuter = True
@@ -102,25 +102,14 @@ if __name__ == '__main__':
     totalSamples = sizeOfOneBuffer * numBuffersToCapture
 
     # Create buffers ready for assigning pointers for data collection
-    bufferAMax = np.zeros(shape=sizeOfOneBuffer, dtype=np.int16)
+    data_buffer = np.zeros(shape=sizeOfOneBuffer, dtype=np.int16)
 
-    memory_segment = 0
-
-    # Set data buffer location for data collection from channel A
-    # handle = chandle
-    # source = PS3000A_CHANNEL_A = 0
-    # pointer to buffer max = ctypes.byref(bufferAMax)
-    # pointer to buffer min = ctypes.byref(bufferAMin)
-    # buffer length = maxSamples
-    # segment index = 0
-    # ratio mode = PS3000A_RATIO_MODE_NONE = 0
-    assert ps.ps3000aSetDataBuffers(chandle,
-                                    options.channel,
-                                    bufferAMax.ctypes.data_as(ctypes.POINTER(ctypes.c_int16)),
-                                    None,
-                                    sizeOfOneBuffer,
-                                    memory_segment,
-                                    ps.PS3000A_RATIO_MODE['PS3000A_RATIO_MODE_NONE']) == 0, \
+    assert ps.ps3000aSetDataBuffer(chandle,
+                                   options.channel,
+                                   data_buffer.ctypes.data_as(ctypes.POINTER(ctypes.c_int16)),
+                                   sizeOfOneBuffer,
+                                   0,
+                                   ps.PS3000A_RATIO_MODE['PS3000A_RATIO_MODE_NONE']) == 0, \
             'Failed to set data buffers for channel A'
 
     # Begin streaming mode:
