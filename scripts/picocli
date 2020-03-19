@@ -91,13 +91,7 @@ if __name__ == '__main__':
         assert_pico_ok(status["changePowerSource"])
 
 
-    # Set up channel A
-    # handle = chandle
-    # channel = PS3000A_CHANNEL_A = 0
-    # enabled = 1
-    # coupling type = PS3000A_DC = 1
-    # range = PS3000A_2V = 7
-    # analogue offset = 0 V
+    # Setup channel
     assert ps.ps3000aSetChannel(chandle,
                                 options.channel,
                                 1,
@@ -120,7 +114,7 @@ if __name__ == '__main__':
                                    sizeOfOneBuffer,
                                    0,
                                    ps.PS3000A_RATIO_MODE['PS3000A_RATIO_MODE_NONE']) == 0, \
-            'Failed to set data buffers for channel A'
+            f'Failed to set data buffers for channel {options.channel}'
 
     # Begin streaming mode:
     # We are not triggering:
