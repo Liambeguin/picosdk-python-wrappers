@@ -101,7 +101,7 @@ if __name__ == '__main__':
 
     # Size of capture
     sizeOfOneBuffer = 500
-    numBuffersToCapture = 10
+    numBuffersToCapture = 1000
 
     totalSamples = sizeOfOneBuffer * numBuffersToCapture
 
