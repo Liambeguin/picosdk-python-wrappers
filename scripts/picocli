@@ -172,7 +172,7 @@ if __name__ == '__main__':
     plt.plot(time, adc2mVChAMax[:])
     plt.xlabel(f'Time ({options.time_unit})')
     plt.ylabel('Voltage (mV)')
-    plt.show()
+    plt.savefig('out.png')
 
     assert ps.ps3000aStop(chandle) == 0, 'Failed to stop scope'
     assert ps.ps3000aCloseUnit(chandle) == 0, 'Failed to close unit'
