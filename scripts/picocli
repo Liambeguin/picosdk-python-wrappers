@@ -13,9 +13,33 @@ import ctypes
 import argparse
 import numpy as np
 
+from picosdk.constants import PICO_STATUS
 from picosdk.functions import adc2mV, assert_pico_ok
 from picosdk.ps3000a import ps3000a as ps
 import matplotlib.pyplot as plt
+
+
+class Picoscope:
+    def __init__(self, serial=None):
+        # Create chandle and status ready for use
+        self.chandle = ctypes.c_int16()
+        serial = ctypes.c_char_p(serial)
+
+        # Open PicoScope 3000 Series device
+        open_status = ps.ps3000aOpenUnit(ctypes.byref(self.chandle), serial)
+        if self.chandle == -1:
+            raise Exception('Failed to open scope')
+        elif self.chandle == 0:
+            raise Exception('Scope not found')
+        # External power not found, switch to USB power
+        if open_status == PICO_STATUS['PICO_POWER_SUPPLY_NOT_CONNECTED']:
+            assert ps.ps3000aChangePowerSource(chandle, open_status) == 0, \
+                    'Failed change power source'
+
+    def __del__(self):
+        # Stop scope from sampling data and close
+        assert_pico_ok(ps.ps3000aStop(self.chandle))
+        assert_pico_ok(ps.ps3000aCloseUnit(self.chandle))
 
 
 def parse_cmdline():
@@ -69,30 +93,9 @@ def streaming_callback(handle, noOfSamples, startIndex, overflow, triggerAt, tri
 if __name__ == '__main__':
     options = parse_cmdline()
 
-    # Create chandle and status ready for use
-    chandle = ctypes.c_int16()
-    status = {}
+    pico = Picoscope()
 
-    # Open PicoScope 3000 Series device
-    # Returns handle to chandle for use in future API functions
-    status["openunit"] = ps.ps3000aOpenUnit(ctypes.byref(chandle), None)
-
-    try:
-        assert_pico_ok(status["openunit"])
-    except:
-
-        powerStatus = status["openunit"]
-
-        if powerStatus == 286:
-            status["changePowerSource"] = ps.ps3000aChangePowerSource(chandle, powerStatus)
-        else:
-            raise
-
-        assert_pico_ok(status["changePowerSource"])
-
-
-    # Setup channel
-    assert ps.ps3000aSetChannel(chandle,
+    assert ps.ps3000aSetChannel(pico.chandle,
                                 options.channel,
                                 1,
                                 options.coupling,
@@ -108,7 +111,7 @@ if __name__ == '__main__':
     # Create buffers ready for assigning pointers for data collection
     data_buffer = np.zeros(shape=sizeOfOneBuffer, dtype=np.int16)
 
-    assert ps.ps3000aSetDataBuffer(chandle,
+    assert ps.ps3000aSetDataBuffer(pico.chandle,
                                    options.channel,
                                    data_buffer.ctypes.data_as(ctypes.POINTER(ctypes.c_int16)),
                                    sizeOfOneBuffer,
@@ -122,7 +125,7 @@ if __name__ == '__main__':
     autoStopOn = 1
     # No downsampling:
     downsampleRatio = 1
-    assert ps.ps3000aRunStreaming(chandle,
+    assert ps.ps3000aRunStreaming(pico.chandle,
                                   ctypes.byref(options.sampling_interval),
                                   ps.PS3000A_TIME_UNITS[f'PS3000A_{options.time_unit.upper()}'],
                                   maxPreTriggerSamples,
@@ -148,7 +151,7 @@ if __name__ == '__main__':
     # Fetch data from the driver in a loop, copying it out of the registered buffers and into our complete one.
     while nextSample < totalSamples and not autoStopOuter:
         wasCalledBack = False
-        ps.ps3000aGetStreamingLatestValues(chandle, cFuncPtr, None)
+        ps.ps3000aGetStreamingLatestValues(pico.chandle, cFuncPtr, None)
         if not wasCalledBack:
             # If we weren't called back by the driver, this means no data is ready. Sleep for a short while before trying
             # again.
@@ -157,10 +160,10 @@ if __name__ == '__main__':
     print("Done grabbing values.")
 
     # Find maximum ADC count value
-    # handle = chandle
+    # handle = pico.chandle
     # pointer to value = ctypes.byref(maxADC)
     maxADC = ctypes.c_int16()
-    assert ps.ps3000aMaximumValue(chandle, ctypes.byref(maxADC)) == 0, 'Failed to find max'
+    assert ps.ps3000aMaximumValue(pico.chandle, ctypes.byref(maxADC)) == 0, 'Failed to find max'
 
     # Convert ADC counts data to mV
     adc2mVChAMax = adc2mV(bufferCompleteA, options.range, maxADC)
@@ -173,6 +176,3 @@ if __name__ == '__main__':
     plt.xlabel(f'Time ({options.time_unit})')
     plt.ylabel('Voltage (mV)')
     plt.savefig('out.png')
-
-    assert ps.ps3000aStop(chandle) == 0, 'Failed to stop scope'
-    assert ps.ps3000aCloseUnit(chandle) == 0, 'Failed to close unit'
