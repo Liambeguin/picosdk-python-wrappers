@@ -36,6 +36,33 @@ class Picoscope:
             assert ps.ps3000aChangePowerSource(chandle, open_status) == 0, \
                     'Failed change power source'
 
+    def set_channel(self, channel, enable=True, coupling='DC', range='2V', aoffset=0.0):
+        '''Specify whether an input channel is to be enabled, its input
+        coupling type, voltage range and analog offset.
+
+        :param channel: The channel to be configured, values are: [A, B, C, D]
+        :param enable: Whether or not to enable the channel, boolean
+        :param coupling: The impedance and coupling type, values are:
+                         - AC: 1 megohm impedance, AC coupling. The channel
+                               accepts input frequencies from about 1 hertz up
+                               to its maximum –3 dB analog bandwidth.
+                         - DC: 1 megohm impedance, DC coupling. The scope
+                               accepts all input frequencies from zero (DC) up
+                               to its maximum –3 dB analog bandwidth
+        :param range: The input voltage range, values are:
+                      ['10MV', '20MV', '50MV', '100MV', '200MV', '500MV', '1V',
+                       '2V', '5V', '10V', '20V', '50V'],
+        :param aoffset: The voltage to add to the input channel before
+                        digitization. The allowable range of offsets depends on
+                        the input range selected for the channel, float
+        '''
+        assert_pico_ok(ps.ps3000aSetChannel(self.chandle,
+                                    ps.PS3000A_CHANNEL[f'PS3000A_CHANNEL_{channel}'],
+                                    enable,
+                                    ps.PS3000A_COUPLING[f'PS3000A_{coupling}'],
+                                    ps.PS3000A_RANGE[f'PS3000A_{range}'],
+                                    aoffset))
+
     def __del__(self):
         # Stop scope from sampling data and close
         assert_pico_ok(ps.ps3000aStop(self.chandle))
@@ -71,9 +98,6 @@ def parse_cmdline():
     )
 
     options = parser.parse_args()
-    options.channel = ps.PS3000A_CHANNEL[f'PS3000A_CHANNEL_{options.channel}']
-    options.range = ps.PS3000A_RANGE[f'PS3000A_{options.range}']
-    options.coupling = ps.PS3000A_COUPLING[f'PS3000A_{options.coupling}']
     options.sampling_interval = ctypes.c_int32(options.sampling_interval)
 
     return options
@@ -94,13 +118,7 @@ if __name__ == '__main__':
     options = parse_cmdline()
 
     pico = Picoscope()
-
-    assert ps.ps3000aSetChannel(pico.chandle,
-                                options.channel,
-                                1,
-                                options.coupling,
-                                options.range,
-                                0.0) == 0, 'Failed to setup Channel'
+    pico.set_channel(options.channel, coupling=options.coupling, range=options.range)
 
     # Size of capture
     sizeOfOneBuffer = 500
@@ -112,7 +130,7 @@ if __name__ == '__main__':
     data_buffer = np.zeros(shape=sizeOfOneBuffer, dtype=np.int16)
 
     assert ps.ps3000aSetDataBuffer(pico.chandle,
-                                   options.channel,
+                                   ps.PS3000A_CHANNEL[f'PS3000A_CHANNEL_{options.channel}'],
                                    data_buffer.ctypes.data_as(ctypes.POINTER(ctypes.c_int16)),
                                    sizeOfOneBuffer,
                                    0,
@@ -166,7 +184,9 @@ if __name__ == '__main__':
     assert ps.ps3000aMaximumValue(pico.chandle, ctypes.byref(maxADC)) == 0, 'Failed to find max'
 
     # Convert ADC counts data to mV
-    adc2mVChAMax = adc2mV(bufferCompleteA, options.range, maxADC)
+    adc2mVChAMax = adc2mV(bufferCompleteA,
+                          ps.PS3000A_RANGE[f'PS3000A_{options.range}'],
+                          maxADC)
 
     # Create time data
     time = np.linspace(0, (totalSamples) * options.sampling_interval.value, totalSamples)
