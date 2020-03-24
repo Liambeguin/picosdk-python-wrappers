@@ -36,6 +36,10 @@ class Picoscope:
             assert ps.ps3000aChangePowerSource(chandle, open_status) == 0, \
                     'Failed change power source'
 
+        self.ds_mode = ps.PS3000A_RATIO_MODE['PS3000A_RATIO_MODE_NONE']
+        self.ds_ratio = 1
+        self.data_buffer = np.zeros(shape=0, dtype=np.int16)
+
     def set_channel(self, channel, enable=True, coupling='DC', range='2V', aoffset=0.0):
         '''Specify whether an input channel is to be enabled, its input
         coupling type, voltage range and analog offset.
@@ -62,6 +66,49 @@ class Picoscope:
                                     ps.PS3000A_COUPLING[f'PS3000A_{coupling}'],
                                     ps.PS3000A_RANGE[f'PS3000A_{range}'],
                                     aoffset))
+
+    def set_downsampling_parameters(self, mode, ratio=1):
+        '''Initialize downsampling parameters used by set_data_buffer and
+        run_streaming
+
+        :param mode: The downsampling mode, values are:
+                     - none: Default. No downsampling, return raw data values
+                     - aggregate: Reduces every block of n values to just two
+                                  values: a minimum and a maximum. The minimum
+                                  and maximum values are returned in two
+                                  separate buffers.
+                     - average: Reduces every block of n values to a single
+                                value representing the average (arithmetic
+                                mean) of all the values.
+                     - decimate: Reduces every block of n values to just the
+                                 first value in the block, discarding all the
+                                 other values.
+        :param ratio: The downsampling factor that will be applied to
+                      the raw data
+        '''
+        assert mode in ['none', 'aggregate', 'average', 'decimate']
+        self.ds_mode = ps.PS3000A_RATIO_MODE[f'PS3000A_RATIO_MODE_{mode}']
+        self.ds_ratio = ratio
+
+    def set_data_buffer(self, channel, size, segment=0):
+        '''Tell the driver where to store the data that will be returned after
+        the next call to one of the GetValues. The data can be either
+        unprocessed or downsampled.
+
+        :param channel: The channel associated to the buffer, values are: [A, B, C, D]
+        :param size: The size of the overview buffer. This is a temporary
+                     buffer used for storing the data before returning it to
+                     the application.
+        :param segment: Index of the memory segment to be used.
+        '''
+        self.data_buffer.resize(size)
+
+        assert_pico_ok(ps.ps3000aSetDataBuffer(self.chandle,
+                                               ps.PS3000A_CHANNEL[f'PS3000A_CHANNEL_{channel}'],
+                                               self.data_buffer.ctypes.data_as(ctypes.POINTER(ctypes.c_int16)),
+                                               size,
+                                               segment,
+                                               self.ds_mode))
 
     def __del__(self):
         # Stop scope from sampling data and close
@@ -108,7 +155,7 @@ def streaming_callback(handle, noOfSamples, startIndex, overflow, triggerAt, tri
     wasCalledBack = True
     destEnd = nextSample + noOfSamples
     sourceEnd = startIndex + noOfSamples
-    bufferCompleteA[nextSample:destEnd] = data_buffer[startIndex:sourceEnd]
+    bufferCompleteA[nextSample:destEnd] = pico.data_buffer[startIndex:sourceEnd]
     nextSample += noOfSamples
     if autoStop:
         autoStopOuter = True
@@ -126,16 +173,7 @@ if __name__ == '__main__':
 
     totalSamples = sizeOfOneBuffer * numBuffersToCapture
 
-    # Create buffers ready for assigning pointers for data collection
-    data_buffer = np.zeros(shape=sizeOfOneBuffer, dtype=np.int16)
-
-    assert ps.ps3000aSetDataBuffer(pico.chandle,
-                                   ps.PS3000A_CHANNEL[f'PS3000A_CHANNEL_{options.channel}'],
-                                   data_buffer.ctypes.data_as(ctypes.POINTER(ctypes.c_int16)),
-                                   sizeOfOneBuffer,
-                                   0,
-                                   ps.PS3000A_RATIO_MODE['PS3000A_RATIO_MODE_NONE']) == 0, \
-            f'Failed to set data buffers for channel {options.channel}'
+    pico.set_data_buffer(options.channel, sizeOfOneBuffer)
 
     # Begin streaming mode:
     # We are not triggering:
