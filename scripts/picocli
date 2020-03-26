@@ -40,6 +40,21 @@ class Picoscope:
         self.ds_ratio = 1
         self.data_buffer = np.zeros(shape=0, dtype=np.int16)
 
+    @property
+    def streaming_ready_cb(self):
+        return self.__streaming_ready_cb
+
+    @streaming_ready_cb.setter
+    def streaming_ready_cb(self, cb):
+        '''Convert the python function into a C function pointer
+
+        :param cb: reference to a callback function
+        '''
+        if cb:
+            self.__streaming_ready_cb = ps.StreamingReadyType(cb)
+        else:
+            self.__streaming_ready_cb = None
+
     def set_channel(self, channel, enable=True, coupling='DC', range='2V', aoffset=0.0):
         '''Specify whether an input channel is to be enabled, its input
         coupling type, voltage range and analog offset.
@@ -228,13 +243,12 @@ if __name__ == '__main__':
     wasCalledBack = False
 
 
-    # Convert the python function into a C function pointer.
-    cFuncPtr = ps.StreamingReadyType(streaming_callback)
+    pico.streaming_ready_cb = streaming_callback
 
     # Fetch data from the driver in a loop, copying it out of the registered buffers and into our complete one.
     while nextSample < totalSamples and not autoStopOuter:
         wasCalledBack = False
-        ps.ps3000aGetStreamingLatestValues(pico.chandle, cFuncPtr, None)
+        ps.ps3000aGetStreamingLatestValues(pico.chandle, pico.streaming_ready_cb, None)
         if not wasCalledBack:
             # If we weren't called back by the driver, this means no data is ready. Sleep for a short while before trying
             # again.
