@@ -39,6 +39,8 @@ class Picoscope:
         self.ds_mode = ps.PS3000A_RATIO_MODE['PS3000A_RATIO_MODE_NONE']
         self.ds_ratio = 1
         self.overview_buffer = np.zeros(shape=0, dtype=np.int16)
+        # big buffer, not registered with the driver, to keep all captured data
+        self.output_buffer = np.zeros(shape=0, dtype=np.int16)
 
     @property
     def streaming_ready_cb(self):
@@ -207,12 +209,10 @@ def parse_cmdline():
 
 
 def streaming_callback(handle, noOfSamples, startIndex, overflow, triggerAt, triggered, autoStop, param):
-    global nextSample, autoStopOuter, wasCalledBack
+    global autoStopOuter, wasCalledBack, pico
     wasCalledBack = True
-    destEnd = nextSample + noOfSamples
-    sourceEnd = startIndex + noOfSamples
-    bufferCompleteA[nextSample:destEnd] = pico.overview_buffer[startIndex:sourceEnd]
-    nextSample += noOfSamples
+    pico.output_buffer = np.append(pico.output_buffer,
+            pico.overview_buffer[startIndex:startIndex+noOfSamples])
     if autoStop:
         autoStopOuter = True
 
@@ -236,22 +236,17 @@ if __name__ == '__main__':
     # on return, RunStreaming updates sampling_interval to the actual rate
     print(f'Actual sampling interval: {options.sampling_interval.value} {options.time_unit}')
 
-    # We need a big buffer, not registered with the driver, to keep our complete capture in.
-    bufferCompleteA = np.zeros(shape=totalSamples, dtype=np.int16)
-    nextSample = 0
     autoStopOuter = False
     wasCalledBack = False
 
-
     pico.streaming_ready_cb = streaming_callback
 
-    # Fetch data from the driver in a loop, copying it out of the registered buffers and into our complete one.
-    while nextSample < totalSamples and not autoStopOuter:
+    while pico.output_buffer.shape[0] < totalSamples and not autoStopOuter:
         wasCalledBack = False
         ps.ps3000aGetStreamingLatestValues(pico.chandle, pico.streaming_ready_cb, None)
         if not wasCalledBack:
-            # If we weren't called back by the driver, this means no data is ready. Sleep for a short while before trying
-            # again.
+            # If we weren't called back by the driver, this means no data is ready.
+            # Sleep for a short while before trying again.
             time.sleep(0.01)
 
     print("Done grabbing values.")
@@ -263,7 +258,7 @@ if __name__ == '__main__':
     assert ps.ps3000aMaximumValue(pico.chandle, ctypes.byref(maxADC)) == 0, 'Failed to find max'
 
     # Convert ADC counts data to mV
-    adc2mVChAMax = adc2mV(bufferCompleteA,
+    adc2mVChAMax = adc2mV(pico.output_buffer,
                           ps.PS3000A_RANGE[f'PS3000A_{options.range}'],
                           maxADC)
 
