@@ -38,7 +38,7 @@ class Picoscope:
 
         self.ds_mode = ps.PS3000A_RATIO_MODE['PS3000A_RATIO_MODE_NONE']
         self.ds_ratio = 1
-        self.data_buffer = np.zeros(shape=0, dtype=np.int16)
+        self.overview_buffer = np.zeros(shape=0, dtype=np.int16)
 
     @property
     def streaming_ready_cb(self):
@@ -116,11 +116,11 @@ class Picoscope:
                      the application.
         :param segment: Index of the memory segment to be used.
         '''
-        self.data_buffer.resize(size)
+        self.overview_buffer.resize(size)
 
         assert_pico_ok(ps.ps3000aSetDataBuffer(self.chandle,
                                                ps.PS3000A_CHANNEL[f'PS3000A_CHANNEL_{channel}'],
-                                               self.data_buffer.ctypes.data_as(ctypes.POINTER(ctypes.c_int16)),
+                                               self.overview_buffer.ctypes.data_as(ctypes.POINTER(ctypes.c_int16)),
                                                size,
                                                segment,
                                                self.ds_mode))
@@ -146,12 +146,12 @@ class Picoscope:
                           have been captured.
         '''
 
-        if self.data_buffer.shape == 0:
+        if self.overview_buffer.shape == 0:
             raise Exception('Please call set_data_buffer before run_streaming')
 
         assert time_unit in ['fs', 'ps', 'ns', 'us', 'ms', 's']
 
-        size = self.data_buffer.shape[0]
+        size = self.overview_buffer.shape[0]
 
         if post_trig_samples == 0:
             post_trig_samples = size * 1000
@@ -211,7 +211,7 @@ def streaming_callback(handle, noOfSamples, startIndex, overflow, triggerAt, tri
     wasCalledBack = True
     destEnd = nextSample + noOfSamples
     sourceEnd = startIndex + noOfSamples
-    bufferCompleteA[nextSample:destEnd] = pico.data_buffer[startIndex:sourceEnd]
+    bufferCompleteA[nextSample:destEnd] = pico.overview_buffer[startIndex:sourceEnd]
     nextSample += noOfSamples
     if autoStop:
         autoStopOuter = True
