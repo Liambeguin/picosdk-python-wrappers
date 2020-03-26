@@ -110,6 +110,47 @@ class Picoscope:
                                                segment,
                                                self.ds_mode))
 
+    def run_streaming(self, sampling_interval, time_unit,
+                      pre_trig_samples=0, post_trig_samples=0,
+                      auto_stop=True):
+        '''Tell the oscilloscope to start collecting data in streaming mode.
+        When data has been collected from the device it is downsampled if
+        necessary and then delivered to the application.
+
+        :param sampling_interval: On entry, the requested time interval between
+                                  samples, in units of time_unit;
+                                  on exit, the actual time interval used.
+        :param time_unit: The unit of time used for sampleInterval. Values are:
+                          ['fs', 'ps', 'ns', 'us', 'ms', 's']
+        :param pre_trig_samples: The maximum number of raw samples before a
+                                 trigger event for each enabled channel.
+        :param post_trig_samples: The maximum number of raw samples after a
+                                  trigger event for each enabled channel.
+        :param auto_stop: A flag that specifies if the streaming should stop
+                          when all of `pre_trig_samples + post_trig_samples`
+                          have been captured.
+        '''
+
+        if self.data_buffer.shape == 0:
+            raise Exception('Please call set_data_buffer before run_streaming')
+
+        assert time_unit in ['fs', 'ps', 'ns', 'us', 'ms', 's']
+
+        size = self.data_buffer.shape[0]
+
+        if post_trig_samples == 0:
+            post_trig_samples = size * 1000
+
+        assert_pico_ok(ps.ps3000aRunStreaming(self.chandle,
+                                              ctypes.byref(sampling_interval),
+                                              ps.PS3000A_TIME_UNITS[f'PS3000A_{time_unit.upper()}'],
+                                              pre_trig_samples,
+                                              post_trig_samples,
+                                              auto_stop,
+                                              self.ds_ratio,
+                                              self.ds_mode,
+                                              size))
+
     def __del__(self):
         # Stop scope from sampling data and close
         assert_pico_ok(ps.ps3000aStop(self.chandle))
@@ -175,21 +216,7 @@ if __name__ == '__main__':
 
     pico.set_data_buffer(options.channel, sizeOfOneBuffer)
 
-    # Begin streaming mode:
-    # We are not triggering:
-    maxPreTriggerSamples = 0
-    autoStopOn = 1
-    # No downsampling:
-    downsampleRatio = 1
-    assert ps.ps3000aRunStreaming(pico.chandle,
-                                  ctypes.byref(options.sampling_interval),
-                                  ps.PS3000A_TIME_UNITS[f'PS3000A_{options.time_unit.upper()}'],
-                                  maxPreTriggerSamples,
-                                  totalSamples,
-                                  autoStopOn,
-                                  1,
-                                  ps.PS3000A_RATIO_MODE['PS3000A_RATIO_MODE_NONE'],
-                                  sizeOfOneBuffer) == 0, 'Failed to start streaming'
+    pico.run_streaming(options.sampling_interval, options.time_unit, auto_stop=False)
 
     # on return, RunStreaming updates sampling_interval to the actual rate
     print(f'Actual sampling interval: {options.sampling_interval.value} {options.time_unit}')
