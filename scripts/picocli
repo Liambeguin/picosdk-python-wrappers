@@ -57,6 +57,14 @@ class Picoscope:
         else:
             self.__streaming_ready_cb = None
 
+    @property
+    def max_adc_count(self):
+        '''Maximum ADC count reported by calls to get values.
+        '''
+        __max = ctypes.c_int16()
+        assert_pico_ok(ps.ps3000aMaximumValue(self.chandle, ctypes.byref(__max)))
+        return __max
+
     def set_channel(self, channel, enable=True, coupling='DC', range='2V', aoffset=0.0):
         '''Specify whether an input channel is to be enabled, its input
         coupling type, voltage range and analog offset.
@@ -252,16 +260,10 @@ if __name__ == '__main__':
 
     print("Done grabbing values.")
 
-    # Find maximum ADC count value
-    # handle = pico.chandle
-    # pointer to value = ctypes.byref(maxADC)
-    maxADC = ctypes.c_int16()
-    assert ps.ps3000aMaximumValue(pico.chandle, ctypes.byref(maxADC)) == 0, 'Failed to find max'
-
     # Convert ADC counts data to mV
     adc2mVChAMax = adc2mV(pico.output_buffer,
                           ps.PS3000A_RANGE[f'PS3000A_{options.range}'],
-                          maxADC)
+                          pico.max_adc_count)
 
     # Create time data
     time = np.linspace(0, (options.total_samples) * options.sampling_interval.value, options.total_samples)
