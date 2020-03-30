@@ -220,11 +220,13 @@ def parse_cmdline():
 
     stop_opts = acq_opts.add_mutually_exclusive_group()
     stop_opts.add_argument('--count', type=int, default=1000, metavar='N',
-                           help='Set number of overview buffers to capture',
+                           help='Set number of samples to capture',
     )
     options = parser.parse_args()
     options.sampling_interval = ctypes.c_int32(options.sampling_interval)
-    options.total_samples = options.buffer_size * options.count
+
+    if options.buffer_size > options.count:
+        options.buffer_size = options.count
 
     return options
 
@@ -255,7 +257,7 @@ if __name__ == '__main__':
 
     pico.streaming_ready_cb = streaming_callback
 
-    while pico.output_buffer.shape[0] < options.total_samples and not autoStopOuter:
+    while pico.output_buffer.shape[0] < options.count and not autoStopOuter:
         wasCalledBack = False
         ps.ps3000aGetStreamingLatestValues(pico.chandle, pico.streaming_ready_cb, None)
         if not wasCalledBack:
@@ -271,7 +273,7 @@ if __name__ == '__main__':
                           pico.max_adc_count)
 
     # Create time data
-    time = np.linspace(0, (options.total_samples) * options.sampling_interval.value, options.total_samples)
+    time = np.linspace(0, (options.count) * options.sampling_interval.value, options.count)
 
     # Plot data from channel A
     plt.plot(time, adc2mVChAMax[:])
