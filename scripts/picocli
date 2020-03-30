@@ -135,13 +135,15 @@ class Picoscope:
                                                segment,
                                                self.ds_mode))
 
-    def run_streaming(self, sampling_interval, time_unit,
-                      pre_trig_samples=0, post_trig_samples=0,
-                      auto_stop=True):
+    def start_sampling(self, mode, sampling_interval, time_unit,
+                       pre_trig_samples=0, post_trig_samples=0,
+                       auto_stop=True):
         '''Tell the oscilloscope to start collecting data in streaming mode.
         When data has been collected from the device it is downsampled if
         necessary and then delivered to the application.
 
+        :param mode: Select picoscope sampling mode. Values are:
+                     ['block', 'ets', 'rapide block', 'streaming']
         :param sampling_interval: On entry, the requested time interval between
                                   samples, in units of time_unit;
                                   on exit, the actual time interval used.
@@ -156,8 +158,11 @@ class Picoscope:
                           have been captured.
         '''
 
+        if mode in ['block', 'ets', 'rapide block']:
+            raise NotImplementedError(f'sampling mode {mode} not implemented')
+
         if self.overview_buffer.shape == 0:
-            raise Exception('Please call set_data_buffer before run_streaming')
+            raise Exception('Please call set_data_buffer before start_sampling')
 
         assert time_unit in ['fs', 'ps', 'ns', 'us', 'ms', 's']
 
@@ -240,7 +245,7 @@ if __name__ == '__main__':
     pico.set_channel(options.channel, coupling=options.coupling, range=options.range)
 
     pico.set_data_buffer(options.channel, options.buffer_size)
-    pico.run_streaming(options.sampling_interval, options.time_unit, auto_stop=False)
+    pico.start_sampling('streaming', options.sampling_interval, options.time_unit, auto_stop=False)
 
     # on return, RunStreaming updates sampling_interval to the actual rate
     print(f'Actual sampling interval: {options.sampling_interval.value} {options.time_unit}')
