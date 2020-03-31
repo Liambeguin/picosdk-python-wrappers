@@ -54,6 +54,7 @@ class Picoscope:
         self.overview_buffer = np.zeros(shape=0, dtype=np.int16)
         # big buffer, not registered with the driver, to keep all captured data
         self.output_buffer = np.zeros(shape=0, dtype=np.int16)
+        self.sample_count = 0
 
     @property
     def streaming_ready_cb(self):
@@ -257,16 +258,16 @@ def parse_cmdline():
 
 
 def streaming_callback(handle, noOfSamples, startIndex, overflow, triggerAt, triggered, autoStop, param):
-    global autoStopOuter, wasCalledBack, pico
+    global wasCalledBack, pico
     wasCalledBack = True
+    pico.sample_count += noOfSamples
     pico.output_buffer = np.append(pico.output_buffer,
             pico.overview_buffer[startIndex:startIndex+noOfSamples])
-    if autoStop:
-        autoStopOuter = True
 
 
 if __name__ == '__main__':
     options = parse_cmdline()
+    wasCalledBack = False
 
     pico = Picoscope()
     pico.set_channel(options.channel, coupling=options.coupling, range=options.range)
@@ -277,19 +278,16 @@ if __name__ == '__main__':
     # on return, RunStreaming updates sampling_interval to the actual rate
     print(f'Actual sampling interval: {options.sampling_interval.value} {options.time_unit}')
 
-    autoStopOuter = False
-    wasCalledBack = False
 
     pico.streaming_ready_cb = streaming_callback
 
-    while pico.output_buffer.shape[0] < options.count and not autoStopOuter:
+    while pico.sample_count < options.count:
         wasCalledBack = False
         ps.ps3000aGetStreamingLatestValues(pico.chandle, pico.streaming_ready_cb, None)
         if not wasCalledBack:
             # If we weren't called back by the driver, this means no data is ready.
             # Sleep for a short while before trying again.
             time.sleep(0.01)
-
     print("Done grabbing values.")
 
     # Convert ADC counts data to mV
