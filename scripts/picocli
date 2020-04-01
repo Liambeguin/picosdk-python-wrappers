@@ -57,6 +57,7 @@ class Picoscope:
         # Buffer, not registered with the driver, to keep all captured data
         self.queue = Queue()
         self.sample_count = 0
+        self.__sampling_configured = False
 
     @property
     def streaming_ready_cb(self):
@@ -196,6 +197,18 @@ class Picoscope:
                                               self.ds_ratio,
                                               self.ds_mode,
                                               size))
+        self.__sampling_configured = True
+
+    def get_streaming_values(self, param=None):
+        '''Request the next block of samples from the driver. Samples will be
+        sent to self.streaming_ready_cb for processing.
+
+        :param param: a void pointer passed to the callback
+        '''
+        if not self.__sampling_configured:
+            raise Exception('Please call start_sampling before get_streaming_values')
+
+        ps.ps3000aGetStreamingLatestValues(self.chandle, self.streaming_ready_cb, param)
 
     def __del__(self):
         # Stop scope from sampling data and close
@@ -260,8 +273,7 @@ def parse_cmdline():
 
 
 def streaming_callback(handle, noOfSamples, startIndex, overflow, triggerAt, triggered, autoStop, param):
-    global wasCalledBack, pico
-    wasCalledBack = True
+    global pico
     pico.sample_count += noOfSamples
     samples = pico.overview_buffer[startIndex:startIndex+noOfSamples].copy()
     pico.queue.put(samples)
@@ -269,7 +281,6 @@ def streaming_callback(handle, noOfSamples, startIndex, overflow, triggerAt, tri
 
 if __name__ == '__main__':
     options = parse_cmdline()
-    wasCalledBack = False
 
     pico = Picoscope()
     pico.set_channel(options.channel, coupling=options.coupling, range=options.range)
@@ -284,12 +295,7 @@ if __name__ == '__main__':
     pico.streaming_ready_cb = streaming_callback
 
     while pico.sample_count < options.count:
-        wasCalledBack = False
-        ps.ps3000aGetStreamingLatestValues(pico.chandle, pico.streaming_ready_cb, None)
-        if not wasCalledBack:
-            # If we weren't called back by the driver, this means no data is ready.
-            # Sleep for a short while before trying again.
-            time.sleep(0.01)
+        pico.get_streaming_values()
     print("Done grabbing values.")
 
     output_buffer = np.zeros(shape=0, dtype=np.int16)
