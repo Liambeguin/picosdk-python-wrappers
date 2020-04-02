@@ -10,8 +10,10 @@
 
 import time
 import ctypes
+import struct
 import argparse
 import datetime
+import threading
 import numpy as np
 
 from queue import Queue
@@ -19,7 +21,6 @@ from queue import Queue
 from picosdk.constants import PICO_STATUS
 from picosdk.functions import adc2mV, assert_pico_ok
 from picosdk.ps3000a import ps3000a as ps
-import matplotlib.pyplot as plt
 
 
 def convert_si(value, uin, uout=''):
@@ -222,6 +223,9 @@ def parse_cmdline():
                         choices=['A', 'B', 'C', 'D'],
                         help='Set channel to sample',
     )
+    parser.add_argument('--prefix', default='C16_samples',
+                        help='Set output filename prefix',
+    )
 
     ch_opts = parser.add_argument_group('channel options')
     ch_opts.add_argument('--range', default='2V',
@@ -257,6 +261,7 @@ def parse_cmdline():
 
     options = parser.parse_args()
     options.sampling_interval = ctypes.c_int32(options.sampling_interval)
+    options.ofile = f'{options.prefix}_{datetime.datetime.now().timestamp()}.raw'
 
     if options.buffer_size > options.count:
         options.buffer_size = options.count
@@ -279,40 +284,58 @@ def streaming_callback(handle, noOfSamples, startIndex, overflow, triggerAt, tri
     pico.queue.put(samples)
 
 
+class writer(threading.Thread):
+    def __init__(self, ofile, queue):
+        '''worker thread to write samples to a file. The file format is 16-bit
+        real followed by 16-bit imag for each sample.  The 16-bit numbers are
+        stored in little endian format (least significant byte first)
+
+        :param ofile: output file to write samples to
+        :param queue: queue holding overview buffers
+        '''
+        threading.Thread.__init__(self)
+        self.ofile = ofile
+        self.queue = queue
+        self.__done = False
+
+    @property
+    def done(self):
+        return self.__done
+    @done.setter
+    def done(self, state):
+        self.__done = state
+
+    def run(self):
+        with open(self.ofile, 'wb') as f:
+            while not self.done:
+                item = self.queue.get()
+                data = b''
+                for s in item:
+                    data = data + struct.pack('<hh', s, 0)
+                f.write(data)
+        print(f'done writing samples to file')
+
+
 if __name__ == '__main__':
     options = parse_cmdline()
-
     pico = Picoscope()
-    pico.set_channel(options.channel, coupling=options.coupling, range=options.range)
 
+    writer_thread = writer(options.ofile, pico.queue)
+    writer_thread.start()
+
+    pico.set_channel(options.channel, coupling=options.coupling, range=options.range)
     pico.set_data_buffer(options.channel, options.buffer_size)
+
     pico.start_sampling('streaming', options.sampling_interval, options.time_unit, auto_stop=False)
 
     # on return, RunStreaming updates sampling_interval to the actual rate
     print(f'Actual sampling interval: {options.sampling_interval.value} {options.time_unit}')
 
-
     pico.streaming_ready_cb = streaming_callback
 
     while pico.sample_count < options.count:
         pico.get_streaming_values()
+
     print("Done grabbing values.")
-
-    output_buffer = np.zeros(shape=0, dtype=np.int16)
-    while pico.queue.qsize() > 0:
-        item = pico.queue.get()
-        output_buffer = np.append(output_buffer, item)
-
-    # Convert ADC counts data to mV
-    adc2mVChAMax = adc2mV(output_buffer,
-                          ps.PS3000A_RANGE[f'PS3000A_{options.range}'],
-                          pico.max_adc_count)
-
-    # Create time data
-    time = np.linspace(0, (options.count) * options.sampling_interval.value, options.count)
-
-    # Plot data from channel A
-    plt.plot(time, adc2mVChAMax[:])
-    plt.xlabel(f'Time ({options.time_unit})')
-    plt.ylabel('Voltage (mV)')
-    plt.savefig('out.png')
+    writer_thread.done = True
+    writer_thread.join()
