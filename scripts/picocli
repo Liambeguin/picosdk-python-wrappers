@@ -330,6 +330,10 @@ if __name__ == '__main__':
 
     # on return, RunStreaming updates sampling_interval to the actual rate
     print(f'Actual sampling interval: {options.sampling_interval.value} {options.time_unit}')
+    total_time = datetime.timedelta(seconds=options.count * \
+            convert_si(options.sampling_interval.value, options.time_unit.replace('s', '')))
+    print(f'Capturing {options.count} samples over {total_time}')
+    print(f'Writing samples to: {options.ofile} (expected size: {16*2*options.count/(8*1e6)} MB)')
 
     pico.streaming_ready_cb = streaming_callback
 
