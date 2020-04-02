@@ -16,6 +16,14 @@ Please take care to match the "bitness" of your python to the PicoSDK.
 Follow the instructions from our [Linux Software & Drivers for Oscilloscopes and Data Loggers page](https://www.picotech.com/downloads/linux) 
 to install the required driver packages for your product.
 
+#### Fedora install
+
+```console
+$ dnf config-manager --add-repo http://labs.picotech.com/rpm/picoscope.repo
+$ dnf check-update
+$ dnf install picoscope
+```
+
 ### macOS
 
 macOS users should install PicoScope Beta for macOS, and then may find this [forum post](https://www.picotech.com/support/topic22221.html) helpful for installing the C 
