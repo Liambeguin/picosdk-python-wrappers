@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # Copyright (C) 2020 Xiphos Systems Corp.
 
+import queue
 import ctypes
 import struct
 import argparse
@@ -113,7 +114,10 @@ class writer(threading.Thread):
     def run(self):
         with open(self.ofile, 'wb') as f:
             while not self.done:
-                item = self.queue.get()
+                try:
+                    item = self.queue.get(timeout=1)
+                except queue.Empty:
+                    pass
                 data = b''
                 for s in item:
                     data = data + struct.pack('<hh', s, 0)
